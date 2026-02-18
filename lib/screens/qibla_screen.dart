@@ -1,5 +1,8 @@
+import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
 import '../utils/app_theme.dart';
 
 class QiblaScreen extends StatefulWidget {
@@ -12,8 +15,15 @@ class QiblaScreen extends StatefulWidget {
 class _QiblaScreenState extends State<QiblaScreen> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
-  final double _qiblaDirection = 112.0;
+  double _qiblaDirection = 0.0;
+  double _distanceKm = 0.0;
   bool _isCompassMode = true;
+  bool _isLoading = true;
+  String _locationName = 'Locating...';
+  String? _errorMessage;
+
+  static const double _meccaLat = 21.4225;
+  static const double _meccaLng = 39.8262;
 
   @override
   void initState() {
@@ -22,10 +32,110 @@ class _QiblaScreenState extends State<QiblaScreen> with SingleTickerProviderStat
       duration: const Duration(milliseconds: 1500),
       vsync: this,
     );
-    _animation = Tween<double>(begin: 0, end: _qiblaDirection).animate(
+    _animation = Tween<double>(begin: 0, end: 0).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
     );
-    _controller.forward();
+    _fetchQiblaDirection();
+  }
+
+  Future<void> _fetchQiblaDirection() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        setState(() {
+          _errorMessage = 'Location services are disabled';
+          _isLoading = false;
+        });
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          setState(() {
+            _errorMessage = 'Location permission denied';
+            _isLoading = false;
+          });
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        setState(() {
+          _errorMessage = 'Location permission permanently denied';
+          _isLoading = false;
+        });
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      );
+
+      final url = Uri.parse(
+        'https://api.aladhan.com/v1/qibla/${position.latitude}/${position.longitude}',
+      );
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final direction = (data['data']['direction'] as num).toDouble();
+        final distance = _calculateDistance(
+          position.latitude, position.longitude, _meccaLat, _meccaLng,
+        );
+
+        setState(() {
+          _qiblaDirection = direction;
+          _distanceKm = distance;
+          _locationName = '${position.latitude.toStringAsFixed(2)}\u00b0N, ${position.longitude.toStringAsFixed(2)}\u00b0E';
+          _isLoading = false;
+          _animation = Tween<double>(begin: 0, end: _qiblaDirection).animate(
+            CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
+          );
+        });
+        _controller.forward(from: 0);
+      } else {
+        setState(() {
+          _errorMessage = 'Failed to fetch Qibla direction';
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Error: ${e.toString().length > 60 ? e.toString().substring(0, 60) : e}';
+        _isLoading = false;
+      });
+    }
+  }
+
+  double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+    const r = 6371.0;
+    final dLat = (lat2 - lat1) * pi / 180;
+    final dLon = (lon2 - lon1) * pi / 180;
+    final a = sin(dLat / 2) * sin(dLat / 2) +
+        cos(lat1 * pi / 180) * cos(lat2 * pi / 180) *
+        sin(dLon / 2) * sin(dLon / 2);
+    final c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    return r * c;
+  }
+
+  String _getCardinalDirection(double degrees) {
+    const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+    final index = ((degrees + 22.5) % 360 / 45).floor();
+    return directions[index];
+  }
+
+  String _formatDistance(double km) {
+    if (km >= 1000) {
+      return '${(km / 1000).toStringAsFixed(1)}k km';
+    }
+    return '${km.toStringAsFixed(0)} km';
   }
 
   @override
@@ -49,7 +159,7 @@ class _QiblaScreenState extends State<QiblaScreen> with SingleTickerProviderStat
             child: Column(
               children: [
                 _buildHeader(),
-                Expanded(child: _buildCompass()),
+                Expanded(child: _buildBody()),
                 _buildInfoDisplay(),
                 _buildToggle(),
                 const SizedBox(height: 24),
@@ -95,7 +205,7 @@ class _QiblaScreenState extends State<QiblaScreen> with SingleTickerProviderStat
                   Icon(Icons.location_on, size: 14, color: AppTheme.primary.withAlpha(200)),
                   const SizedBox(width: 4),
                   Text(
-                    'Istanbul, TR',
+                    _locationName,
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
@@ -106,18 +216,79 @@ class _QiblaScreenState extends State<QiblaScreen> with SingleTickerProviderStat
               ),
             ],
           ),
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white.withAlpha(13),
+          GestureDetector(
+            onTap: _fetchQiblaDirection,
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withAlpha(13),
+              ),
+              child: const Icon(Icons.refresh, color: Colors.white70, size: 22),
             ),
-            child: const Icon(Icons.settings, color: Colors.white70, size: 22),
           ),
         ],
       ),
     );
+  }
+
+  Widget _buildBody() {
+    if (_isLoading) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 48,
+              height: 48,
+              child: CircularProgressIndicator(
+                color: AppTheme.primary,
+                strokeWidth: 3,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Finding Qibla direction...',
+              style: TextStyle(color: Colors.grey[400], fontSize: 14),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_errorMessage != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.location_off, size: 48, color: Colors.red[300]),
+              const SizedBox(height: 16),
+              Text(
+                _errorMessage!,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.red[300], fontSize: 14),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton.icon(
+                onPressed: _fetchQiblaDirection,
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('Retry'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primary,
+                  foregroundColor: Colors.black,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return _buildCompass();
   }
 
   Widget _buildCompass() {
@@ -353,6 +524,10 @@ class _QiblaScreenState extends State<QiblaScreen> with SingleTickerProviderStat
   }
 
   Widget _buildInfoDisplay() {
+    if (_isLoading || _errorMessage != null) {
+      return const SizedBox(height: 80);
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
@@ -381,7 +556,7 @@ class _QiblaScreenState extends State<QiblaScreen> with SingleTickerProviderStat
               ),
               const SizedBox(width: 8),
               Text(
-                'SE',
+                _getCardinalDirection(_qiblaDirection),
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w500,
@@ -398,9 +573,9 @@ class _QiblaScreenState extends State<QiblaScreen> with SingleTickerProviderStat
                   text: 'Mecca is ',
                   style: TextStyle(color: Colors.white.withAlpha(153), fontSize: 14),
                 ),
-                const TextSpan(
-                  text: '2,145 km',
-                  style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+                TextSpan(
+                  text: _formatDistance(_distanceKm),
+                  style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
                 ),
                 TextSpan(
                   text: ' away',
@@ -423,7 +598,7 @@ class _QiblaScreenState extends State<QiblaScreen> with SingleTickerProviderStat
                 Icon(Icons.check_circle, size: 14, color: AppTheme.textSecondary.withAlpha(200)),
                 const SizedBox(width: 4),
                 Text(
-                  'Excellent Accuracy',
+                  'GPS Accuracy',
                   style: TextStyle(
                     fontSize: 12,
                     color: AppTheme.textSecondary.withAlpha(200),
