@@ -51,4 +51,46 @@ class AppTheme {
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
     ),
   );
+
+  static ThemeData lightTheme = ThemeData(
+    brightness: Brightness.light,
+    primaryColor: primaryDark,
+    scaffoldBackgroundColor: backgroundLight,
+    colorScheme: const ColorScheme.light(
+      primary: primaryDark,
+      secondary: secondary,
+      surface: Color(0xFFFFFFFF),
+    ),
+    textTheme: GoogleFonts.manropeTextTheme(
+      ThemeData.light().textTheme,
+    ),
+    appBarTheme: const AppBarTheme(
+      backgroundColor: backgroundLight,
+      elevation: 0,
+      iconTheme: IconThemeData(color: Color(0xFF1A3A22)),
+      titleTextStyle: TextStyle(color: Color(0xFF1A3A22), fontSize: 20, fontWeight: FontWeight.bold),
+    ),
+    bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+      backgroundColor: Colors.white,
+      selectedItemColor: primaryDark,
+      unselectedItemColor: Color(0xFF8A9B8F),
+      type: BottomNavigationBarType.fixed,
+      selectedLabelStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+      unselectedLabelStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+    ),
+    cardTheme: CardThemeData(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 1,
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: const Color(0xFFF0F4F1),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide.none,
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    ),
+  );
 }

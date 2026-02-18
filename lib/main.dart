@@ -4,11 +4,13 @@ import 'package:provider/provider.dart';
 import 'providers/tasbeeh_provider.dart';
 import 'providers/qaza_provider.dart';
 import 'providers/quran_provider.dart';
+import 'providers/theme_provider.dart';
 import 'screens/home_screen.dart';
 import 'screens/quran_screen.dart';
 import 'screens/qibla_screen.dart';
 import 'screens/tools_screen.dart';
 import 'screens/manage_tasbeeh_screen.dart';
+import 'screens/splash_screen.dart';
 import 'utils/app_theme.dart';
 
 void main() {
@@ -31,12 +33,17 @@ class NoorIslamicApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => TasbeehProvider()),
         ChangeNotifierProvider(create: (_) => QazaProvider()),
         ChangeNotifierProvider(create: (_) => QuranProvider()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
       ],
-      child: MaterialApp(
-        title: 'Noor Islamic',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.darkTheme,
-        home: const MainShell(),
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, _) {
+          return MaterialApp(
+            title: 'Noor Islamic',
+            debugShowCheckedModeBanner: false,
+            theme: themeProvider.isDarkMode ? AppTheme.darkTheme : AppTheme.lightTheme,
+            home: SplashScreen(nextScreen: const MainShell()),
+          );
+        },
       ),
     );
   }
@@ -69,14 +76,15 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = context.watch<ThemeProvider>().isDarkMode;
     return Scaffold(
-      backgroundColor: AppTheme.backgroundDark,
+      backgroundColor: isDark ? AppTheme.backgroundDark : AppTheme.backgroundLight,
       body: SafeArea(child: _screens[_currentIndex]),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
-          color: AppTheme.surfaceDark2,
+          color: isDark ? AppTheme.surfaceDark2 : Colors.white,
           border: Border(
-            top: BorderSide(color: AppTheme.surfaceLight.withAlpha(128)),
+            top: BorderSide(color: isDark ? AppTheme.surfaceLight.withAlpha(128) : Colors.grey.withAlpha(50)),
           ),
         ),
         child: BottomNavigationBar(
@@ -95,8 +103,9 @@ class _MainShellState extends State<MainShell> {
   }
 
   Widget _buildDrawer(BuildContext context) {
+    final isDark = context.watch<ThemeProvider>().isDarkMode;
     return Drawer(
-      backgroundColor: AppTheme.surfaceDark2,
+      backgroundColor: isDark ? AppTheme.surfaceDark2 : Colors.white,
       child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -159,6 +168,10 @@ class _MainShellState extends State<MainShell> {
             _drawerItem(Icons.calendar_month, 'Hijri Calendar', () {
               Navigator.pop(context);
               setState(() => _currentIndex = 3);
+            }),
+            _drawerItem(Icons.brightness_6, 'Toggle Theme', () {
+              Navigator.pop(context);
+              context.read<ThemeProvider>().toggleTheme();
             }),
             const Spacer(),
             Padding(
